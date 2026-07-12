@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 import pickle
+import joblib
 
-# Load trained model
-model = pickle.load(open("gb.pkl", "rb"))
+model = joblib.load("gb.pkl")
 
 st.set_page_config(page_title="Flight Price Prediction", layout="centered")
 
