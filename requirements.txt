@@ -1,12 +1,6 @@
-# ===============================
-# Flight Price Prediction Project
-# requirements.txt
-# ===============================
-
-numpy==2.0.2
-pandas==2.2.3
+streamlit
+numpy
+pandas
+matplotlib
 scikit-learn==1.6.1
-matplotlib==3.10.0
-seaborn==0.13.2
-streamlit==1.45.1
-joblib==1.4.2
+joblib
