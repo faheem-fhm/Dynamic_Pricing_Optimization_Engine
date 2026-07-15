@@ -3,13 +3,109 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 import pickle
 import joblib
+from datetime import datetime
 
 model = joblib.load("gb.pkl")
 
-st.set_page_config(page_title="Flight Price Prediction", layout="centered")
+st.set_page_config(
+    page_title="Flight Price Predictor",
+    page_icon="✈️",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-st.title("Flight Price Prediction System")
-st.write("Enter your flight details to predict the ticket price")
+# ---------------------------------------------------------
+# Custom styling — production look & feel
+# ---------------------------------------------------------
+st.markdown("""
+<style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+
+    .stApp {
+        background: linear-gradient(180deg, #0f1729 0%, #16213e 100%);
+    }
+
+    .hero {
+        background: linear-gradient(120deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+        padding: 2.2rem 2.5rem;
+        border-radius: 18px;
+        margin-bottom: 1.8rem;
+        box-shadow: 0 10px 30px rgba(99, 102, 241, 0.25);
+    }
+    .hero h1 {
+        color: white;
+        font-size: 2.1rem;
+        font-weight: 800;
+        margin: 0 0 0.3rem 0;
+    }
+    .hero p {
+        color: rgba(255,255,255,0.9);
+        font-size: 1.02rem;
+        margin: 0;
+    }
+
+    .section-card {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 14px;
+        padding: 1.4rem 1.6rem;
+        margin-bottom: 1.2rem;
+    }
+    .section-label {
+        color: #a5b4fc;
+        font-weight: 700;
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.8rem;
+    }
+
+    .price-card {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        border-radius: 18px;
+        padding: 1.8rem 2rem;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(16, 185, 129, 0.3);
+        margin-bottom: 1rem;
+    }
+    .price-card .label {
+        color: rgba(255,255,255,0.85);
+        font-size: 0.95rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .price-card .value {
+        color: white;
+        font-size: 2.8rem;
+        font-weight: 800;
+        margin: 0.2rem 0;
+    }
+
+    .stButton>button {
+        background: linear-gradient(120deg, #6366f1, #8b5cf6);
+        color: white;
+        font-weight: 700;
+        border: none;
+        border-radius: 10px;
+        padding: 0.7rem 1.2rem;
+        width: 100%;
+        transition: transform 0.15s ease;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div class="hero">
+    <h1>✈️ Flight Price Predictor</h1>
+    <p>Get an instant, model-driven fare estimate for domestic Indian flight routes.</p>
+</div>
+""", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # Known category values (from the actual training dataset:
@@ -65,23 +161,85 @@ def get_duration_category(duration):
         return "Very Long"
 
 
-# Input fields
-airline = st.selectbox("Airline", AIRLINES)
+# Keep a running history of predictions for this session
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-# Flight code depends on the chosen airline, so build its options dynamically
-flight = st.selectbox("Flight Code", AIRLINE_FLIGHTS[airline])
+# ---------------------------------------------------------
+# Sidebar — app info + session history
+# ---------------------------------------------------------
+with st.sidebar:
+    st.markdown("### ✈️ About this app")
+    st.write(
+        "This tool predicts flight ticket prices using a trained "
+        "Gradient Boosting model fitted on historical Indian domestic "
+        "flight fare data."
+    )
+    st.markdown("---")
+    st.markdown("### 📊 Model Coverage")
+    st.write(f"**Airlines:** {len(AIRLINES)}")
+    st.write(f"**Cities:** {len(CITIES)}")
+    st.write(f"**Flight codes:** {len(ALL_FLIGHTS):,}")
+    st.markdown("---")
+    st.markdown("### 🕘 Session History")
+    if st.session_state.history:
+        for h in reversed(st.session_state.history[-5:]):
+            st.markdown(
+                f"**₹{h['price']:,.0f}** — {h['route']} "
+                f"({h['airline']}, {h['travel_class']})"
+            )
+        if st.button("Clear history", use_container_width=True):
+            st.session_state.history = []
+            st.rerun()
+    else:
+        st.caption("Your recent predictions will appear here.")
 
-source_city = st.selectbox("Source City", CITIES)
-departure_time = st.selectbox("Departure Time", TIME_SLOTS)
-stops = st.selectbox("Number of Stops", STOPS)
-arrival_time = st.selectbox("Arrival Time", TIME_SLOTS)
-destination_city = st.selectbox("Destination City", [c for c in CITIES if c != source_city])
-travel_class = st.selectbox("Class", CLASSES)
-duration = st.number_input("Duration (hours)", min_value=0.0, step=0.5)
-days_left = st.number_input("Days Left Before Departure", min_value=0, step=1)
+# ---------------------------------------------------------
+# Main input form
+# ---------------------------------------------------------
+st.markdown('<div class="section-card">', unsafe_allow_html=True)
+st.markdown('<div class="section-label">Flight Details</div>', unsafe_allow_html=True)
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    airline = st.selectbox("Airline", AIRLINES)
+    # Flight code depends on the chosen airline, so build its options dynamically
+    flight = st.selectbox("Flight Code", AIRLINE_FLIGHTS[airline])
+    travel_class = st.selectbox("Class", CLASSES)
+
+with col2:
+    source_city = st.selectbox("Source City", CITIES)
+    destination_city = st.selectbox(
+        "Destination City", [c for c in CITIES if c != source_city]
+    )
+    stops = st.selectbox("Number of Stops", STOPS)
+
+with col3:
+    departure_time = st.selectbox("Departure Time", TIME_SLOTS)
+    arrival_time = st.selectbox("Arrival Time", TIME_SLOTS)
+    days_left = st.number_input("Days Left Before Departure", min_value=0, step=1, value=15)
+
+duration = st.slider(
+    "Duration (hours)", min_value=0.5, max_value=30.0, value=2.5, step=0.5
+)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# Quick visual summary of the selected route
+st.markdown(
+    f"""
+    <div style="text-align:center; color:#cbd5e1; font-size:1.05rem; margin-bottom:1rem;">
+        <b>{source_city}</b> &nbsp;&#9992;&nbsp; <b>{destination_city}</b>
+        &nbsp;|&nbsp; {airline} ({flight}) &nbsp;|&nbsp; {travel_class} &nbsp;|&nbsp; {stops.replace('_', ' ')} stop(s)
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # Predict button
-if st.button("Predict Price"):
+predict_clicked = st.button("🔮 Predict Price", use_container_width=True)
+
+if predict_clicked:
     duration_category = get_duration_category(duration)
     route = f"{source_city}-{destination_city}"
 
@@ -100,36 +258,67 @@ if st.button("Predict Price"):
         "route": route_le.transform([route])[0]
     }])
 
-    prediction = model.predict(input_data)[0]
+    with st.spinner("Running the model..."):
+        prediction = model.predict(input_data)[0]
 
-    st.success(f"Predicted Flight Price: ₹{prediction:,.2f}")
+    # Save to session history
+    st.session_state.history.append({
+        "price": prediction,
+        "route": f"{source_city} → {destination_city}",
+        "airline": airline,
+        "travel_class": travel_class,
+        "timestamp": datetime.now().strftime("%H:%M:%S"),
+    })
 
-    st.info(f"""
-Input Summary:
-Airline: {airline}
-Flight: {flight}
-Source City: {source_city}
-Departure Time: {departure_time}
-Stops: {stops}
-Arrival Time: {arrival_time}
-Destination City: {destination_city}
-Class: {travel_class}
-Duration: {duration} hrs
-Days Left: {days_left}
-""")
+    st.markdown(
+        f"""
+        <div class="price-card">
+            <div class="label">Predicted Flight Price</div>
+            <div class="value">₹{prediction:,.0f}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Quick-glance metrics
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Route", f"{source_city} → {destination_city}")
+    m2.metric("Duration", f"{duration} hrs", duration_category)
+    m3.metric("Stops", stops.replace("_", " ").title())
+    m4.metric("Days Left", int(days_left))
+
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-label">Input Summary</div>', unsafe_allow_html=True)
+    summary_df = pd.DataFrame({
+        "Field": ["Airline", "Flight", "Source City", "Departure Time", "Stops",
+                  "Arrival Time", "Destination City", "Class", "Duration (hrs)", "Days Left"],
+        "Value": [airline, flight, source_city, departure_time, stops,
+                  arrival_time, destination_city, travel_class, duration, int(days_left)],
+    })
+    st.dataframe(summary_df, hide_index=True, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     # ---------------------------------------------------------
     # Engineered / added columns (derived automatically at
     # predict time, not entered directly by the user):
     # duration_category and route.
     # ---------------------------------------------------------
-    st.subheader("Engineered Features (added columns)")
-    engineered_df = pd.DataFrame({
-        "Feature": ["duration_category", "route"],
-        "Value": [duration_category, route],
-        "Encoded Value": [
-            int(duration_cat_le.transform([duration_category])[0]),
-            int(route_le.transform([route])[0]),
-        ],
-    })
-    st.table(engineered_df)
+    with st.expander("⚙️ Engineered Features (added columns)"):
+        engineered_df = pd.DataFrame({
+            "Feature": ["duration_category", "route"],
+            "Value": [duration_category, route],
+            "Encoded Value": [
+                int(duration_cat_le.transform([duration_category])[0]),
+                int(route_le.transform([route])[0]),
+            ],
+        })
+        st.dataframe(engineered_df, hide_index=True, use_container_width=True)
+else:
+    st.markdown(
+        """
+        <div style="text-align:center; color:#94a3b8; padding: 1.5rem 0;">
+            Fill in the flight details above and click <b>Predict Price</b> to get an estimate.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
